@@ -1,0 +1,1 @@
+upload the json file to Jupiter server to run the .ipynb 
