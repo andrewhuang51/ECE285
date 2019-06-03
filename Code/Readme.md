@@ -1,4 +1,5 @@
 upload the json file to Jupiter server to run the .ipynb 
+
 I find the two websites are very detail on the implementation of SSD
 
 https://cedrickchee.gitbook.io/knowledge/courses/fast.ai/deep-learning-part-2-cutting-edge-deep-learning-for-coders/2018-edition/lesson-9-multi-object-detection
