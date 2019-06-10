@@ -1,21 +1,99 @@
-"""VOC Dataset Classes
-
-Original author: Francisco Massa
-https://github.com/fmassa/vision/blob/voc_dataset/torchvision/datasets/voc.py
-
-Updated by: Ellis Brown, Max deGroot
-"""
-from .config import HOME
-import os.path as osp
-import sys
 import torch
-import torch.utils.data as data
 import cv2
 import numpy as np
+# 
+import os
+import os.path as osp
+import sys
+
+import torch.utils.data as data
+
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
     import xml.etree.ElementTree as ET
+
+from matplotlib import pyplot as plt
+from matplotlib import patches, patheffects
+
+# gets home dir cross platform
+HOME = os.path.join(os.path.expanduser("~"),'SSD')
+
+# for making bounding boxes pretty
+COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
+          (0, 255, 255, 128), (255, 0, 255, 128), (255, 255, 0, 128))
+
+MEANS = (104, 117, 123)
+
+# SSD300 CONFIGS
+voc = {
+    'num_classes': 21,
+    'lr_steps': (80000, 100000, 120000),
+    'max_iter': 120000,
+    'feature_maps': [38, 19, 10, 5, 3, 1],
+    'min_dim': 300,
+    'steps': [8, 16, 32, 64, 100, 300],
+    'min_sizes': [30, 60, 111, 162, 213, 264],
+    'max_sizes': [60, 111, 162, 213, 264, 315],
+    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+    'variance': [0.1, 0.2],
+    'clip': True,
+    'name': 'VOC',
+}
+
+coco = {
+    'num_classes': 201,
+    'lr_steps': (280000, 360000, 400000),
+    'max_iter': 400000,
+    'feature_maps': [38, 19, 10, 5, 3, 1],
+    'min_dim': 300,
+    'steps': [8, 16, 32, 64, 100, 300],
+    'min_sizes': [21, 45, 99, 153, 207, 261],
+    'max_sizes': [45, 99, 153, 207, 261, 315],
+    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+    'variance': [0.1, 0.2],
+    'clip': True,
+    'name': 'COCO',
+}
+
+
+def detection_collate(batch):
+    """Custom collate fn for dealing with batches of images that have a different
+    number of associated object annotations (bounding boxes).
+
+    Arguments:
+        batch: (tuple) A tuple of tensor images and lists of annotations
+
+    Return:
+        A tuple containing:
+            1) (tensor) batch of images stacked on their 0 dim
+            2) (list of tensors) annotations for a given image are stacked on
+                                 0 dim
+    """
+    targets = []
+    imgs = []
+    for sample in batch:
+        imgs.append(sample[0])
+        targets.append(torch.FloatTensor(sample[1]))
+    return torch.stack(imgs, 0), targets
+
+
+def base_transform(image, size, mean):
+    x = cv2.resize(image, (size, size)).astype(np.float32)
+    x -= mean
+    x = x.astype(np.float32)
+    return x
+
+
+class BaseTransform:
+    def __init__(self, size, mean):
+        self.size = size
+        self.mean = np.array(mean, dtype=np.float32)
+
+    def __call__(self, image, boxes=None, labels=None):
+        return base_transform(image, self.size, self.mean), boxes, labels
+    
+
 
 VOC_CLASSES = (  # always index 0
     'aeroplane', 'bicycle', 'bird', 'boat',
@@ -25,8 +103,8 @@ VOC_CLASSES = (  # always index 0
     'sheep', 'sofa', 'train', 'tvmonitor')
 
 # note: if you used our download scripts, this should be right
-VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
-# VOC_ROOT = '/datasets/cs252csp19-public/VOCdevkit/'
+# VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
+VOC_ROOT = '/datasets/ee285f-public/PascalVOC2012/'
 
 
 class VOCAnnotationTransform(object):
@@ -108,7 +186,7 @@ class VOCDetection(data.Dataset):
         self._imgpath = osp.join('%s', 'JPEGImages', '%s.jpg')
         self.ids = list()
         for (year, name) in image_sets:
-            rootpath = osp.join(self.root, 'VOC' + year)
+            rootpath = self.root
             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
                 self.ids.append((rootpath, line.strip()))
 
@@ -182,3 +260,13 @@ class VOCDetection(data.Dataset):
             tensorized version of img, squeezed
         '''
         return torch.Tensor(self.pull_image(index)).unsqueeze_(0)
+    
+def draw_bbox(ax,coords,class_id,score):
+    
+    label_name = VOC_CLASSES[class_id-1]
+    display_txt = '%s: %.2f'%(label_name, score)
+    colors = plt.cm.hsv(np.linspace(0, 1, 21)).tolist()
+    color = colors[class_id]
+    patch = ax.add_patch(plt.Rectangle(*coords, fill=False, edgecolor=color, linewidth=2))
+    patch.set_path_effects([patheffects.Stroke(linewidth=2, foreground='black'), patheffects.Normal()])
+    ax.text(coords[0][0], coords[0][1], display_txt,color='white', bbox={'facecolor':color, 'alpha':0.5})
